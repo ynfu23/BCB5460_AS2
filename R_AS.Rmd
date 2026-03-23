@@ -335,3 +335,17 @@ plot(type_chr_teosinte)
 ggsave("Graphs/type_chr_teosinte.png",type_chr_teosinte)
 
 ```
+
+```{R Sam Kiuna diagnosis}
+# inspecting your output files
+maize_chr2_in <- read_csv("Output_files/maize_chr2_in.csv")
+teosinte_chr10_de <- read_csv("Output_files/teosinte_chr10_de.csv")
+
+View(maize_chr2_in)
+View(teosinte_chr10_de)
+
+ncol(maize_chr2_in)
+ncol(teosinte_chr10_de)
+
+
+```
