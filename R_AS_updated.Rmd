@@ -1,0 +1,366 @@
+---
+title: "BCB5460 R_Assignment"
+author: "Yining Fu"
+output: pdf_document
+date: "`r format(Sys.Date(), '%Y-%m-%d')`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+rm(list = ls())
+
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+## File Inspection
+### fang_et_al_genotypes.txt
+
+```{r}
+# load dataframe using relative path
+fang <- read.csv("Input_files/fang_et_al_genotypes.txt", header = FALSE, sep = "\t")
+
+# it has 2782 rows and 986 columns (row number excluding header)
+dim(fang)
+
+# header contains "Sample_ID", "JG_OTU", "Group", and all SNP names 
+col <- fang[1,]
+col[1:10]
+
+# file size
+file.size("Input_files/fang_et_al_genotypes.txt")
+
+```
+
+### snp_position.txt
+
+```{r}
+# load dataframe using relative path
+snp <- read.csv("Input_files/snp_position.txt", header = FALSE, sep = "\t")
+
+# it has 983 rows and 15 columns (row number excluding header)
+dim(snp)
+
+# header contains "SNP_ID", "Chromosome", Position", and more shown in standard out
+col <- snp[1,]
+col[1:10]
+
+# file size
+file.size("Input_files/snp_position.txt")
+
+```
+
+## Data Processing 
+
+extract maize and teosinte data from `fang`; change the `Sample_ID` header to `SNP_ID`; delete columns "JG_OTU" and "Group"
+```{r}
+maize <- fang %>% filter(.[[3]] %in% c("ZMMIL", "ZMMLR", "ZMMMR", "Group"))
+teosinte <- fang %>% filter(.[[3]] %in% c("ZMPBA", "ZMPIL", "ZMPJA", "Group"))
+
+maize[1,1] <- "SNP_ID"
+teosinte[1,1] <- "SNP_ID"
+
+maize <- maize %>% select(-c(2,3))
+teosinte <- teosinte %>% select(-c(2,3))
+
+```
+
+transpose maize and teosinte data
+```{r}
+tp_maize <- as.data.frame(t(maize))
+tp_teosinte <- as.data.frame(t(teosinte))
+
+```
+
+trim `snp` so that it only has columns "SNP_ID", "Chromosome", and "Position"
+```{r}
+trim_snp <- snp %>% select(c(1,3,4))
+
+```
+
+merge `trim_snp` with `tp_maize` and `tp_teosinte`; note that the header is no longer at the top. Save the header as an object to add back to the output files in the end because it is going to be lost in following steps
+```{r}
+join_maize <- merge(trim_snp,tp_maize, by.x = 1, by.y = 1)
+join_teosinte <- merge(trim_snp,tp_teosinte, by.x = 1, by.y = 1)
+
+header1 <- join_maize %>% filter(.[[1]] %in% c("SNP_ID"))
+header2 <- join_teosinte %>% filter(.[[1]] %in% c("SNP_ID"))
+
+```
+
+make three files from `join_maize` with values for position, unknown positions (up), and multiple positions (mp). Header is add back to "maize_up" and "maize_mp"
+```{r}
+SeparatePosition <- function(file) {
+  file_p <- file %>% filter(!.[[2]] %in% c("unknown", "multiple") 
+                                 & !.[[3]] %in% c("unknown", "multiple","Position"))
+  file_up <- file %>% filter(.[[2]] %in% c("unknown") | .[[3]] %in% c("unknown" )) 
+  file_mp <- file %>% filter(.[[2]] %in% c("multiple") | .[[3]] %in% c("multiple")) 
+  return(list(file_p, file_up, file_mp))
+}
+
+results <- SeparatePosition(join_maize)
+maize_p <- as.data.frame(results[1])
+maize_up <- as.data.frame(results[2])
+maize_mp <- as.data.frame(results[3])
+
+colnames(maize_up) <- header1
+colnames(maize_mp) <- header1
+
+write.table(maize_up, file = paste0("Output_files/maize_up.csv"), sep = "\t", row.names = FALSE, quote = FALSE)
+write.table(maize_mp, file = paste0("Output_files/maize_mp.csv"), sep = "\t", row.names = FALSE, quote = FALSE)
+ 
+```
+
+Separate `maize_p` with chromosome number and sort in increasing and decreasing order (Note: it is sorted numerically but not in a mathematically correct way, e.g. 9300391 > 88863284 because 9>8 regardless of the number of digits). Replace "?" to "-" in the decreasing-order files. Header is added back to the files in the "OutputFile()" function
+```{r}
+Separate_Sort <- function(file) {
+  # separate with chr number
+  chr <- list()
+  for (i in 1:10) {
+    file_i <- file %>% filter(.[[2]] %in% c(i))
+    chr[[i]] <- file_i
+  }
+  # sort in increasing order
+  inc <- list()
+  for (i in 1:10) {
+    i_sort <- chr[[i]] %>% arrange(as.numeric(.[[3]]))
+    inc[[i]] <- i_sort
+  }
+  # sort in descending order and replace ? with -
+  dec <- list()
+  for (i in 1:10) {
+    d_sort <- chr[[i]] %>% arrange(desc(as.numeric(.[[3]])))
+    d_sort[d_sort == "?/?"] <- "-/-"
+    dec[[i]] <- d_sort
+  }
+  output <- list(inc,dec)
+  return(output)
+}
+
+
+OutputFile <- function(file) {
+  results <- Separate_Sort(file)
+  inc_file <- results[[1]]
+  for (i in 1:10) {
+    chri <- as.data.frame(inc_file[i])
+    # maize and teosinte data have different number of columns, so different header
+    if (species == "maize") {
+      colnames(chri) <- header1
+    } else {
+      colnames(chri) <- header2
+    }
+    
+    filename <- paste0(species,c("_chr"),i,c("_in.csv"))
+    write.table(chri, file = paste0("Output_files/",filename), sep = "\t", row.names = FALSE, quote = FALSE)
+  }
+  
+  dec_file <- results[[2]]
+  for (i in 1:10) {
+    chri <- as.data.frame(dec_file[i])
+    # again, different header for maize and teosinte
+    if (species == "maize") {
+      colnames(chri) <- header1
+    } else {
+      colnames(chri) <- header2
+    }
+    
+    filename <- paste0(species,c("_chr"),i,c("_de.csv"))
+    write.table(chri, file = paste0("Output_files/",filename), sep = "\t", row.names = FALSE, quote = FALSE)
+  }
+}
+
+species <- "maize"
+OutputFile(maize_p)
+
+```
+
+For teosinte data, repeat the process of making files that have position value and have unknown or multiple positions, separating by chromosome number, sorting based on position value, replace "?" with "-", and output results to directory 
+```{r}
+results <- SeparatePosition(join_teosinte)
+teosinte_p <- as.data.frame(results[1])
+teosinte_up <- as.data.frame(results[2])
+teosinte_mp <- as.data.frame(results[3])
+
+colnames(teosinte_up) <- header2
+colnames(teosinte_mp) <- header2
+
+write.table(teosinte_up, file = paste0("Output_files/teosinte_up.csv"), 
+            sep = "\t", row.names = FALSE, quote = FALSE)
+write.table(teosinte_mp, file = paste0("Output_files/teosinte_mp.csv"), 
+            sep = "\t", row.names = FALSE, quote = FALSE)
+
+species <- "teosinte"
+OutputFile(teosinte_p)
+
+# check one file as a representative to see if the files created are tab-delimited
+data <- read_delim("Output_files/maize_mp.csv", delim = NULL, show_col_types = FALSE)
+colnames(data) %>% .[1:10]
+
+```
+
+## Visualization
+
+Distribution of SNPs on and across chromosomes. Note that this is the total number of SNP positions that were investigated and not the actual number of SNPs.
+```{r}
+NofSNP <- join_maize %>% filter(!.[[2]] %in% c("Chromosome")) %>% 
+  ggplot(aes(x=.[[2]])) + geom_bar(fill="darkgreen") + labs(title="Number of SNPs per Chromosome",x="Chromosome number",y="Counts") + geom_text(aes(label = after_stat(count)), stat = "count", vjust = -0.5)
+
+plot(NofSNP)
+ggsave("Graphs/NofSNP.png",NofSNP)
+```
+
+Compare SNPs in maize and teosinte.
+```{r}
+# create a new data frame by copying the original and removing header, so all changes made in visualization is not changing the original data
+join_maize_visual <- join_maize %>% filter(!.[[2]] %in% c("Chromosome"))
+join_maize_visual[join_maize_visual == "?/?"] <- NA 
+
+df <- join_maize_visual %>%
+  rowwise() %>%
+  mutate(is_SNP = n_distinct(c_across(4:ncol(join_maize_visual)), na.rm = TRUE) == 1) %>%
+  ungroup()
+
+maize_true_snp <- df %>% filter(is_SNP %in% c("FALSE")) %>%
+  count(.[[2]]) %>% ggplot(aes(x=factor(.[[1]]),y=n)) + geom_col(fill="lightblue") + labs(title="SNP sites per Chromosome in maize",x="Chromosome number",y="Counts")
+
+plot(maize_true_snp)
+ggsave("Graphs/maize_true_snp.png",maize_true_snp)
+
+# repeat for teosinte
+join_teosinte_visual <- join_teosinte %>% filter(!.[[2]] %in% c("Chromosome"))
+join_teosinte_visual[join_teosinte_visual == "?/?"] <- NA 
+
+df <- join_teosinte_visual %>%
+  rowwise() %>%
+  mutate(is_SNP = n_distinct(c_across(4:ncol(join_teosinte_visual)), na.rm = TRUE) == 1) %>%
+  ungroup()
+
+teosinte_true_snp <- df %>% filter(is_SNP %in% c("FALSE")) %>%
+  count(.[[2]]) %>% ggplot(aes(x=factor(.[[1]]),y=n)) + geom_col(fill="lightyellow") + labs(title="SNP sites per Chromosome in teosinte",x="Chromosome number",y="Counts")
+
+plot(teosinte_true_snp)
+ggsave("Graphs/teosinte_true_snp.png",teosinte_true_snp)
+
+```
+
+Missing data and amount of heterozygosity
+```{r}
+# convert to long format
+long_maize <- join_maize_visual %>% pivot_longer(cols = 4:ncol(join_maize_visual),
+               names_to = "sample_ID",
+               values_to = "genotype")
+
+# classify genotype type to missing, homozygous, and heterozygous 
+long_maize <- long_maize %>%
+  mutate(genotype_type = case_when(is.na(genotype) ~ "missing",genotype %in%
+                                     c("A/A","T/T","C/C","G/G") ~ "homozygous", 
+                                   TRUE ~ "heterozygous"))
+
+# calculate proportion of genotype types in each sample
+genotype_prop <- long_maize %>%
+  group_by(sample_ID, genotype_type) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(sample_ID) %>%
+  mutate(prop = n / sum(n))
+
+# plot genotype type proportion per sample
+type_sample_maize <- ggplot(genotype_prop, aes(x = sample_ID, y = prop, fill = genotype_type)) +
+  geom_col() +
+  labs(title = "Maize: genotype type proportion per sample", x = "Sample_ID",
+       y = "Proportion",
+       fill = "Genotype")
+plot(type_sample_maize)
+ggsave("Graphs/type_sample_maize.png",type_sample_maize)
+
+# plot genotype type proportion per chromosome across samples
+colnames(long_maize)[2] <- "chromosome"
+genotype_prop2 <- long_maize %>%
+  group_by(chromosome, genotype_type) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(chromosome) %>%
+  mutate(prop2 = n / sum(n))
+
+type_chr_maize <- ggplot(genotype_prop2, aes(x = chromosome, y = prop2, fill = genotype_type)) +
+  geom_col() +
+  labs(title = "Maize: genotype type proportion per chromosome",x = "Chromosome",
+       y = "Proportion",
+       fill = "Genotype")
+plot(type_chr_maize)
+ggsave("Graphs/type_chr_maize.png",type_chr_maize)
+
+```
+
+Repeat for teosinte
+```{r}
+# convert to long format
+long_teosinte <- join_teosinte_visual %>% pivot_longer(cols = 4:ncol(join_teosinte_visual),
+               names_to = "sample_ID",
+               values_to = "genotype")
+
+# classify genotype type to missing, homozygous, and heterozygous 
+long_teosinte <- long_teosinte %>%
+  mutate(genotype_type = case_when(is.na(genotype) ~ "missing",genotype %in%
+                                     c("A/A","T/T","C/C","G/G") ~ "homozygous", 
+                                   TRUE ~ "heterozygous"))
+
+# calculate proportion of genotype types in each sample
+genotype_prop <- long_teosinte %>%
+  group_by(sample_ID, genotype_type) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(sample_ID) %>%
+  mutate(prop = n / sum(n))
+
+# plot genotype type proportion per sample
+type_sample_teosinte <- ggplot(genotype_prop, aes(x = sample_ID, y = prop, 
+                                                  fill = genotype_type)) + geom_col() +
+  labs(title = "Teosinte: genotype type proportion per sample", x = "Sample_ID",
+       y = "Proportion",
+       fill = "Genotype")
+plot(type_sample_teosinte)
+ggsave("Graphs/type_sample_teosinte.png",type_sample_teosinte)
+
+# plot genotype type proportion per chromosome across samples
+colnames(long_teosinte)[2] <- "chromosome"
+genotype_prop2 <- long_teosinte %>%
+  group_by(chromosome, genotype_type) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(chromosome) %>%
+  mutate(prop2 = n / sum(n))
+
+type_chr_teosinte <- ggplot(genotype_prop2, aes(x = chromosome, y = prop2, 
+                                                fill = genotype_type)) + geom_col() +
+  labs(title = "Teosinte: genotype type proportion per chromosome",x = "Chromosome",
+       y = "Proportion",
+       fill = "Genotype")
+plot(type_chr_teosinte)
+ggsave("Graphs/type_chr_teosinte.png",type_chr_teosinte)
+
+```
+
+SNP density along chromosome
+```{r}
+bin_size <- 1e6
+
+density_maize <- join_maize_visual %>%
+  mutate(CHR = as.factor(.[[2]]), bin = floor(as.numeric(.[[3]]) / bin_size)) %>%
+  group_by(CHR, bin) %>%
+  summarise(snp_count = n(), .groups = "drop") %>%
+  mutate(bin_midpoint = (bin + 0.5) * bin_size)
+
+density_maize_plot <- ggplot(density_maize, aes(x = bin_midpoint, y = snp_count)) +
+  geom_line() +
+  labs(x = "Genomic position", y = "SNP count per bin", title = "SNP Density Along Chromosomes")
+
+plot(density_maize_plot)
+ggsave("Graphs/density_maize_plot.png",density_maize_plot)
+
+```
+
+```{r}
+save.image(file="R_AS.RData")
+```

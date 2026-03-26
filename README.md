@@ -14,4 +14,7 @@
       1 file with all SNPs with unknown positions in the genome
       1 file with all SNPs with multiple positions in the genome
 3. All graphs generated from the visualization section in assignment is in the `Graphs` directory
-4. The R script used to generate all output files and graphs is `R_AS.Rmd`
+4. The R script used to generate all output files and graphs before the deadline of peer-review submission (aka 3.23) is `R_AS.Rmd`
+5. `R_AS_updated.Rmd` and `R_AS_updated.pdf` are modified scripts after incorporating some ideas in the comments of my reviewers. The output files
+and graphs are also newly generated using the updated script. 
+

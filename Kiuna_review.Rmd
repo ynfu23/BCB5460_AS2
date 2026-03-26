@@ -1,0 +1,11 @@
+#Yining's_assignment_review
+
+##*Good job! I like that you organised your repository into subfolders.*
+
+Potential changes:
+
+- Arrange the chromosomes numerically instead of as text, so that 10 does not come before 2, etc.
+
+- Your output files are not separated by tabs. They have only one column. To fix that, add`sep="\t`at that section where you are saving the files into the "Output_files" folder.
+
+
