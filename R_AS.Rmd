@@ -335,3 +335,9 @@ plot(type_chr_teosinte)
 ggsave("Graphs/type_chr_teosinte.png",type_chr_teosinte)
 
 ```
+
+```{r}
+save.image(file="Sunday.RData")
+
+
+```
